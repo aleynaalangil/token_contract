@@ -9,7 +9,7 @@ use anchor_spl::token_interface::{
 declare_id!("2TE5kuPuKgoXoBEtDB6EhCvP5yVRJGiS2DnthZNw3oP4");
 
 #[program]
-pub mod anchor { //token contract
+pub mod token_contract { //token contract
 
     use super::*;
 
@@ -50,6 +50,77 @@ pub mod anchor { //token contract
         let cpi_context = CpiContext::new(cpi_program, cpi_accounts);
         token_interface::mint_to(cpi_context, amount)?;
         msg!("Mint Token");
+        Ok(())
+    }
+
+    pub fn initialize_company(
+        ctx: Context<InitializeCompany>,
+        name: String,
+        symbol: [u8; 5],
+        total_supply: u128,
+        token_mint: Pubkey,
+    ) -> Result<()> {
+        // Create the company account
+        let company = &mut ctx.accounts.company;
+        //create a mint PDA from the company name
+        // let token_mint = Pubkey::find_program_address(&[b"token-2022-token", ctx.accounts.payer.key().as_ref(), name.as_bytes()], &ctx.accounts.token_contract.key()).0;
+        company.name = name;
+        company.symbol = symbol;
+        company.total_supply = total_supply;
+        company.token_mint = token_mint;
+        company.shareholder_count = 0;
+        company.vote_account = ctx.accounts.vote_account.key();
+
+        // Invoke the `create_token` function in `token_contract`
+        let ctx = Context {
+            program_id: &ctx.accounts.token_contract.key(),
+            accounts: &mut CreateToken {
+                signer: ctx.accounts.payer.clone(),
+                mint: ctx.accounts.token_mint.clone(),
+                system_program: ctx.accounts.system_program.clone(),
+                token_program: ctx.accounts.token_program.clone(),
+            },
+            remaining_accounts: &[],
+            bumps: CreateTokenBumps { mint: 0 },
+        };
+
+        let symbol_str = String::from_utf8(symbol.to_vec())
+            .map_err(|_| anchor_lang::error::ErrorCode::AccountDidNotSerialize)?;
+        create_token(ctx, symbol_str)?;
+
+        msg!("Company initialized successfully with token mint via token_contract");
+
+        Ok(())
+    }
+
+    pub fn add_shareholder(
+        ctx: Context<AddShareholder>,
+        _voting_power: u64,
+        _is_whitelisted: bool,
+    ) -> Result<()> {
+        let shareholder = &mut ctx.accounts.shareholder;
+        shareholder.owner = ctx.accounts.owner.key();
+        shareholder.voting_power = 0;
+        shareholder.delegated_to = Option::None;
+        shareholder.is_whitelisted = false;
+
+        let company = &mut ctx.accounts.company;
+        company.shareholder_count += 1;
+
+        msg!("Shareholder added successfully");
+
+        Ok(())
+    }
+
+    pub fn update_shareholder_voting_power(
+        ctx: Context<UpdateShareholder>,
+        new_voting_power: u64,
+    ) -> Result<()> {
+        let shareholder = &mut ctx.accounts.shareholder;
+        shareholder.voting_power = new_voting_power;
+
+        msg!("Shareholder voting power updated successfully");
+
         Ok(())
     }
 }
@@ -138,4 +209,95 @@ pub struct MintToken<'info> {
     #[account(mut)]
     pub receiver: InterfaceAccount<'info, TokenAccount>,
     pub token_program: Interface<'info, TokenInterface>,
+}
+
+///new changes
+/// 
+// Accounts
+#[derive(Accounts)]
+pub struct InitializeCompany<'info> {
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + Company::MAX_SIZE
+    )]
+    pub company: Account<'info, Company>,
+    #[account(mut)]
+    pub token_mint: InterfaceAccount<'info, Mint>, // Correct type for mints
+    #[account(mut)]
+    /// CHECK: Manually validated account for vote account
+    pub vote_account: InterfaceAccount<'info, TokenAccount>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+    pub token_program: Interface<'info, TokenInterface>, // Correct type for token program
+    #[account(mut)]
+    /// CHECK: This is the program that handles mint creation
+    pub token_contract: AccountInfo<'info>,
+}
+
+#[derive(Accounts)]
+pub struct AddShareholder<'info> {
+    #[account(mut)]
+    pub company: Account<'info, Company>,
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + Shareholder::MAX_SIZE
+    )]
+    pub shareholder: Account<'info, Shareholder>,
+    pub owner: Signer<'info>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct UpdateShareholder<'info> {
+    #[account(
+        mut,
+        has_one = owner
+    )]
+    pub shareholder: Account<'info, Shareholder>,
+    pub owner: Signer<'info>,
+}
+
+// Data Structures
+#[account]
+pub struct Company {
+    pub authority: Pubkey,
+    pub name: String,
+    pub symbol: [u8; 5],
+    pub total_supply: u128,
+    pub token_mint: Pubkey,
+    pub shareholder_count: u32,
+    pub vote_account: Pubkey,
+}
+
+impl Company {
+    pub const MAX_SIZE: usize = 32 + 4 + 32 + 16 + 32 + 4 + 32; // Calculated max size
+}
+
+#[account]
+pub struct Shareholder {
+    pub owner: Pubkey,                // Shareholder's wallet
+    pub voting_power: u64,            // Voting tokens owned
+    pub delegated_to: Option<Pubkey>, // Delegation (optional)
+    pub is_whitelisted: bool,         // Whitelisting status
+}
+
+impl Shareholder {
+    pub const MAX_SIZE: usize = 32 + 8 + 1 + 1; // Calculated max size
+}
+
+impl<'info> InitializeCompany<'info> {
+    pub fn into_mint_to_context(&self) -> CpiContext<'_, '_, '_, 'info, MintTo<'info>> {
+        let cpi_accounts = MintTo {
+            mint: self.token_mint.to_account_info(),
+            to: self.vote_account.to_account_info(),
+            authority: self.payer.to_account_info(),
+        };
+        let cpi_program = self.token_program.to_account_info();
+        CpiContext::new(cpi_program, cpi_accounts)
+    }
 }

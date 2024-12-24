@@ -1,14 +1,14 @@
 import * as anchor from '@coral-xyz/anchor';
 import type { Program } from '@coral-xyz/anchor';
 import { sendAndConfirmTransaction } from '@solana/web3.js';
-import type { Anchor } from '../target/types/anchor';
+import type { TokenContract } from '../target/types/token_contract';
 
 describe('anchor', () => {
   // Configure the client to use the local cluster.
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
-  const program = anchor.workspace.Anchor as Program<Anchor>;
+  const program = anchor.workspace.TokenContract as Program<TokenContract>;
   const connection = program.provider.connection;
   const TOKEN_2022_PROGRAM_ID = new anchor.web3.PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
   const wallet = provider.wallet as anchor.Wallet;

@@ -3,9 +3,9 @@ import * as anchor from '@coral-xyz/anchor';
 import { PublicKey, sendAndConfirmTransaction } from '@solana/web3.js';
 import { BankrunProvider } from 'anchor-bankrun';
 import { startAnchor } from 'solana-bankrun';
-import type { Anchor } from '../target/types/anchor';
+import type { TokenContract } from '../target/types/token_contract';
 
-const IDL = require('../target/idl/anchor.json');
+const IDL = require('../target/idl/token_contract.json');
 const PROGRAM_ID = new PublicKey(IDL.address);
 
 describe('anchor', async () => {
@@ -13,7 +13,7 @@ describe('anchor', async () => {
   const provider = new BankrunProvider(context);
   const connection = provider.connection;
   anchor.setProvider(provider);
-  const program = new anchor.Program<Anchor>(IDL, provider);
+  const program = new anchor.Program<TokenContract>(IDL, provider);
   const client = context.banksClient;
   const TOKEN_2022_PROGRAM_ID = new anchor.web3.PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
   const wallet = provider.wallet as anchor.Wallet;
@@ -37,8 +37,8 @@ describe('anchor', async () => {
   );
 
   it('Create Token-2022 Token', async () => {
-    await connection.requestAirdrop(receiver.publicKey, 2000000000);
-    await connection.requestAirdrop(wallet.publicKey, 3000000000);
+    // await connection.requestAirdrop(receiver.publicKey, 2000000000);
+    // await connection.requestAirdrop(wallet.publicKey, 3000000000);
     const tx = new anchor.web3.Transaction();
     const [blockhash, _height] = await client.getLatestBlockhash();
 
