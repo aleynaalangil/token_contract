@@ -9,8 +9,9 @@ const IDL = require('../target/idl/anchor.json');
 const PROGRAM_ID = new PublicKey(IDL.address);
 
 describe('anchor', async () => {
-  const context = await startAnchor('', [{ name: 'anchor', programId: PROGRAM_ID }], []);
+  const context = await startAnchor('', [{ name: 'token_contract', programId: PROGRAM_ID }], []);
   const provider = new BankrunProvider(context);
+  const connection = provider.connection;
   anchor.setProvider(provider);
   const program = new anchor.Program<Anchor>(IDL, provider);
   const client = context.banksClient;
@@ -36,8 +37,8 @@ describe('anchor', async () => {
   );
 
   it('Create Token-2022 Token', async () => {
-    // await connection.requestAirdrop(receiver.publicKey, 1000000000);
-    // await connection.requestAirdrop(wallet.publicKey, 1000000000);
+    await connection.requestAirdrop(receiver.publicKey, 2000000000);
+    await connection.requestAirdrop(wallet.publicKey, 3000000000);
     const tx = new anchor.web3.Transaction();
     const [blockhash, _height] = await client.getLatestBlockhash();
 
