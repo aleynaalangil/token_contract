@@ -7,11 +7,15 @@ skip-lint = false
 [programs.localnet]
 token_contract = "2TE5kuPuKgoXoBEtDB6EhCvP5yVRJGiS2DnthZNw3oP4"
 
+[programs.devnet]
+token_contract = "2TE5kuPuKgoXoBEtDB6EhCvP5yVRJGiS2DnthZNw3oP4"
+
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Localnet"
+# cluster = "Localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

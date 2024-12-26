@@ -32,8 +32,8 @@ describe('anchor', () => {
   );
 
   it('Create Token-2022 Token', async () => {
-    await connection.requestAirdrop(receiver.publicKey, 1000000000);
-    await connection.requestAirdrop(wallet.publicKey, 1000000000);
+    // await connection.requestAirdrop(receiver.publicKey, 1000000000);
+    // await connection.requestAirdrop(wallet.publicKey, 1000000000);
     const tx = new anchor.web3.Transaction();
 
     const ix = await program.methods
@@ -68,31 +68,6 @@ describe('anchor', () => {
     const sig = await sendAndConfirmTransaction(program.provider.connection, tx, [wallet.payer]);
     console.log('Your transaction signature', sig);
   });
-
-  /*
-  // This instruction is included only as a reference, but is not required to run this test, because we are using "init" in the program's transfer instruction. The create_associated_token_account instruction on the program is provided as a reference as well.
-  it("Initialize receiver ATA", async () => {
-    const tx = new anchor.web3.Transaction();
-    const ix = await program.methods
-      .createAssociatedTokenAccount()
-      .accounts({
-        tokenAccount: receiverATA,
-        mint: mint,
-        signer: receiver.publicKey,
-        tokenProgram: TOKEN_2022_PROGRAM_ID,
-        associatedTokenProgram: ATA_PROGRAM_ID,
-      })
-      .signers([receiver])
-      .instruction();
-    tx.add(ix);
-    const sig = await anchor.web3.sendAndConfirmTransaction(
-      program.provider.connection,
-      tx,
-      [receiver]
-    );
-    console.log("Your transaction signature", sig);
-  });
-*/
 
   it('Mint Token to payer', async () => {
     const tx = new anchor.web3.Transaction();
