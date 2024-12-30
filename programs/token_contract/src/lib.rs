@@ -1,328 +1,21 @@
-// #![allow(clippy::result_large_err)]
-
-// use anchor_lang::prelude::*;
-// use anchor_spl::associated_token::AssociatedToken;
-// use anchor_spl::token_interface::{
-//     self, Mint, MintTo, TokenAccount, TokenInterface, TransferChecked,
-// };
-
-// declare_id!("2TE5kuPuKgoXoBEtDB6EhCvP5yVRJGiS2DnthZNw3oP4");
-
-// #[program]
-// pub mod token_contract {
-//     //token contract
-
-//     use super::*;
-
-//     pub fn create_token(_ctx: Context<CreateToken>, _token_name: String) -> Result<()> {
-//         msg!("Create Token");
-//         Ok(())
-//     }
-//     pub fn create_token_account(_ctx: Context<CreateTokenAccount>) -> Result<()> {
-//         msg!("Create Token Account");
-//         Ok(())
-//     }
-//     pub fn create_associated_token_account(
-//         _ctx: Context<CreateAssociatedTokenAccount>,
-//     ) -> Result<()> {
-//         msg!("Create Associated Token Account");
-//         Ok(())
-//     }
-//     pub fn transfer_token(ctx: Context<TransferToken>, amount: u64) -> Result<()> {
-//         let cpi_accounts = TransferChecked {
-//             from: ctx.accounts.from.to_account_info().clone(),
-//             mint: ctx.accounts.mint.to_account_info().clone(),
-//             to: ctx.accounts.to_ata.to_account_info().clone(),
-//             authority: ctx.accounts.signer.to_account_info(),
-//         };
-//         let cpi_program = ctx.accounts.token_program.to_account_info();
-//         let cpi_context = CpiContext::new(cpi_program, cpi_accounts);
-//         token_interface::transfer_checked(cpi_context, amount, ctx.accounts.mint.decimals)?;
-//         msg!("Transfer Token");
-//         Ok(())
-//     }
-//     pub fn mint_token(ctx: Context<MintToken>, amount: u64) -> Result<()> {
-//         let cpi_accounts = MintTo {
-//             mint: ctx.accounts.mint.to_account_info().clone(),
-//             to: ctx.accounts.receiver.to_account_info().clone(),
-//             authority: ctx.accounts.signer.to_account_info(),
-//         };
-//         let cpi_program = ctx.accounts.token_program.to_account_info();
-//         let cpi_context = CpiContext::new(cpi_program, cpi_accounts);
-//         token_interface::mint_to(cpi_context, amount)?;
-//         msg!("Mint Token");
-//         Ok(())
-//     }
-
-//     pub fn initialize_company(
-//         ctx: Context<InitializeCompany>,
-//         name: String,
-//         symbol: [u8; 5],
-//         total_supply: u128,
-//         token_mint: Pubkey,
-//         treasury: Pubkey,
-//     ) -> Result<()> {
-//         // Create the company account
-//         let company = &mut ctx.accounts.company;
-//         //create a mint PDA from the company name
-//         company.authority = ctx.accounts.payer.key();
-//         company.name = name;
-//         company.symbol = symbol;
-//         company.total_supply = total_supply;
-//         company.token_mint = token_mint;
-//         company.shareholder_count = 0;
-//         company.treasury = treasury;
-
-//         msg!("Company initialized successfully with token mint via token_contract");
-
-//         Ok(())
-//     }
-
-//     pub fn add_shareholder(
-//         ctx: Context<AddShareholder>,
-//         _voting_power: u64,
-//         _is_whitelisted: bool,
-//     ) -> Result<()> {
-//         let shareholder = &mut ctx.accounts.shareholder;
-//         shareholder.owner = ctx.accounts.owner.key();
-//         shareholder.voting_power = 0;
-//         shareholder.delegated_to = Option::None;
-//         shareholder.is_whitelisted = false;
-
-//         let company = &mut ctx.accounts.company;
-//         company.shareholder_count += 1;
-
-//         msg!("Shareholder added successfully");
-
-//         Ok(())
-//     }
-
-//     pub fn update_shareholder_voting_power(
-//         ctx: Context<UpdateShareholder>,
-//         new_voting_power: u64,
-//     ) -> Result<()> {
-//         let shareholder = &mut ctx.accounts.shareholder;
-//         shareholder.voting_power = new_voting_power;
-
-//         msg!("Shareholder voting power updated successfully");
-
-//         Ok(())
-//     }
-// }
-
-// #[derive(Accounts)]
-// #[instruction(token_name: String)]
-// pub struct CreateToken<'info> {
-//     #[account(mut)]
-//     pub signer: Signer<'info>,
-//     #[account(
-//         init,
-//         payer = signer,
-//         mint::decimals = 6,
-//         mint::authority = signer.key(),
-//         seeds = [b"token-2022-token", signer.key().as_ref(), token_name.as_bytes()],
-//         bump,
-//     )]
-//     pub mint: InterfaceAccount<'info, Mint>,
-//     pub system_program: Program<'info, System>,
-//     pub token_program: Interface<'info, TokenInterface>,
-// }
-
-// #[derive(Accounts)]
-// pub struct CreateTokenAccount<'info> {
-//     #[account(mut)]
-//     pub signer: Signer<'info>,
-//     pub mint: InterfaceAccount<'info, Mint>,
-//     #[account(
-//         init,
-//         token::mint = mint,
-//         token::authority = signer,
-//         payer = signer,
-//         seeds = [b"token-2022-token-account", signer.key().as_ref(), mint.key().as_ref()],
-//         bump,
-//     )]
-//     pub token_account: InterfaceAccount<'info, TokenAccount>,
-//     pub system_program: Program<'info, System>,
-//     pub token_program: Interface<'info, TokenInterface>,
-// }
-
-// #[derive(Accounts)]
-// pub struct CreateAssociatedTokenAccount<'info> {
-//     #[account(mut)]
-//     pub signer: Signer<'info>,
-//     pub mint: InterfaceAccount<'info, Mint>,
-//     #[account(
-//         init,
-//         associated_token::mint = mint,
-//         payer = signer,
-//         associated_token::authority = signer,
-//     )]
-//     pub token_account: InterfaceAccount<'info, TokenAccount>,
-//     pub system_program: Program<'info, System>,
-//     pub token_program: Interface<'info, TokenInterface>,
-//     pub associated_token_program: Program<'info, AssociatedToken>,
-// }
-
-// #[derive(Accounts)]
-// pub struct TransferToken<'info> {
-//     #[account(mut)]
-//     pub signer: Signer<'info>,
-//     #[account(mut)]
-//     pub from: InterfaceAccount<'info, TokenAccount>,
-//     pub to: SystemAccount<'info>,
-//     #[account(
-//         init,
-//         associated_token::mint = mint,
-//         payer = signer,
-//         associated_token::authority = to
-//     )]
-//     pub to_ata: InterfaceAccount<'info, TokenAccount>,
-//     #[account(mut)]
-//     pub mint: InterfaceAccount<'info, Mint>,
-//     pub token_program: Interface<'info, TokenInterface>,
-//     pub system_program: Program<'info, System>,
-//     pub associated_token_program: Program<'info, AssociatedToken>,
-// }
-
-// #[derive(Accounts)]
-// pub struct MintToken<'info> {
-//     #[account(mut)]
-//     pub signer: Signer<'info>,
-//     #[account(mut)]
-//     pub mint: InterfaceAccount<'info, Mint>,
-//     #[account(mut)]
-//     pub receiver: InterfaceAccount<'info, TokenAccount>,
-//     pub token_program: Interface<'info, TokenInterface>,
-// }
-
-// #[derive(Accounts)]
-// pub struct InitializeCompany<'info> {
-//     #[account(
-//         init,
-//         payer = payer,
-//         space = 8 + Company::MAX_SIZE
-//     )]
-//     pub company: Account<'info, Company>,
-//     // #[account(mut)]
-//     // pub token_mint: InterfaceAccount<'info, Mint>, // Correct type for mints
-//     // #[account(mut)]
-//     /// CHECK: Manually validated account for vote account
-//     // pub treasury: InterfaceAccount<'info, TokenAccount>,
-//     #[account(mut)]
-//     pub payer: Signer<'info>,
-//     pub system_program: Program<'info, System>,
-//     pub token_program: Interface<'info, TokenInterface>, // Correct type for token program
-// }
-
-// #[derive(Accounts)]
-// pub struct AddShareholder<'info> {
-//     #[account(mut)]
-//     pub company: Account<'info, Company>,
-//     #[account(
-//         init,
-//         payer = payer,
-//         space = 8 + Shareholder::MAX_SIZE
-//     )]
-//     pub shareholder: Account<'info, Shareholder>,
-//     pub owner: Signer<'info>,
-//     #[account(mut)]
-//     pub payer: Signer<'info>,
-//     pub system_program: Program<'info, System>,
-// }
-
-// #[derive(Accounts)]
-// pub struct UpdateShareholder<'info> {
-//     #[account(
-//         mut,
-//         has_one = owner
-//     )]
-//     pub shareholder: Account<'info, Shareholder>,
-//     pub owner: Signer<'info>,
-// }
-
-// // Data Structures
-// #[account]
-// pub struct Company {
-//     pub authority: Pubkey,
-//     pub name: String,
-//     pub symbol: [u8; 5],
-//     pub total_supply: u128,
-//     pub token_mint: Pubkey,
-//     pub shareholder_count: u32,
-//     pub treasury: Pubkey,
-// }
-
-// impl Company {
-//     pub const MAX_SIZE: usize = 32 + 4 + 32 + 16 + 32 + 4 + 32; // Calculated max size
-// }
-
-// #[account]
-// pub struct Shareholder {
-//     pub owner: Pubkey,                // Shareholder's wallet
-//     pub voting_power: u64,            // Voting tokens owned
-//     pub delegated_to: Option<Pubkey>, // Delegation (optional)
-//     pub is_whitelisted: bool,         // Whitelisting status
-// }
-
-// impl Shareholder {
-//     pub const MAX_SIZE: usize = 32 + 8 + 1 + 1; // Calculated max size
-// }
 #![allow(clippy::result_large_err)]
-
 use anchor_lang::prelude::*;
-use anchor_spl::associated_token::AssociatedToken;
-use anchor_spl::token_interface::{
-    self, Mint, MintTo, TokenAccount, TokenInterface, TransferChecked,
-};
+use anchor_spl::token_interface::TokenInterface;
 
-declare_id!("2TE5kuPuKgoXoBEtDB6EhCvP5yVRJGiS2DnthZNw3oP4");
+declare_id!("HKj8pzMK6w6pSbdtzj1Q315xFrtpMWypnzzUK4JV6SSB");
 
 #[program]
 pub mod token_contract {
     use super::*;
 
-    pub fn create_token(_ctx: Context<CreateToken>, _token_name: String) -> Result<()> {
-        msg!("Create Token");
-        Ok(())
+    pub fn initialize_poll(ctx: Context<InitializePoll>, options: Vec<String>) -> Result<()> {
+        ctx.accounts.poll.init(options)
     }
 
-    pub fn create_token_account(_ctx: Context<CreateTokenAccount>) -> Result<()> {
-        msg!("Create Token Account");
-        Ok(())
-    }
-
-    pub fn create_associated_token_account(
-        _ctx: Context<CreateAssociatedTokenAccount>,
-    ) -> Result<()> {
-        msg!("Create Associated Token Account");
-        Ok(())
-    }
-
-    pub fn transfer_token(ctx: Context<TransferToken>, amount: u64) -> Result<()> {
-        let cpi_accounts = TransferChecked {
-            from: ctx.accounts.from.to_account_info().clone(),
-            mint: ctx.accounts.mint.to_account_info().clone(),
-            to: ctx.accounts.to_ata.to_account_info().clone(),
-            authority: ctx.accounts.signer.to_account_info(),
-        };
-        let cpi_program = ctx.accounts.token_program.to_account_info();
-        let cpi_context = CpiContext::new(cpi_program, cpi_accounts);
-        token_interface::transfer_checked(cpi_context, amount, ctx.accounts.mint.decimals)?;
-        msg!("Transfer Token");
-        Ok(())
-    }
-
-    pub fn mint_token(ctx: Context<MintToken>, amount: u64) -> Result<()> {
-        let cpi_accounts = MintTo {
-            mint: ctx.accounts.mint.to_account_info().clone(),
-            to: ctx.accounts.receiver.to_account_info().clone(),
-            authority: ctx.accounts.signer.to_account_info(),
-        };
-        let cpi_program = ctx.accounts.token_program.to_account_info();
-        let cpi_context = CpiContext::new(cpi_program, cpi_accounts);
-        token_interface::mint_to(cpi_context, amount)?;
-        msg!("Mint Token");
-        Ok(())
+    pub fn vote(ctx: Context<Vote>, vote_id: u8, shareholder_owner: Pubkey, shareholder_voting_power: u128) -> Result<()> {
+        let poll = &mut ctx.accounts.poll;
+        // Use the Poll's `vote` method
+        poll.vote(vote_id, shareholder_owner, shareholder_voting_power)
     }
 
     pub fn initialize_company(
@@ -347,123 +40,69 @@ pub mod token_contract {
         Ok(())
     }
 
-    pub fn add_shareholder(
-        ctx: Context<AddShareholder>,
-        _voting_power: u64,
-        _is_whitelisted: bool,
-        company: Pubkey,
+    pub fn add_shareholder_by_company(
+        ctx: Context<AddShareholderByCompany>, // company: Pubkey,
+        shareholder_pk: Pubkey,
+        voting_power: u128,
     ) -> Result<()> {
         let shareholder = &mut ctx.accounts.shareholder;
-        shareholder.owner = ctx.accounts.owner.key();
-        shareholder.voting_power = 0;
-        shareholder.delegated_to = ctx.accounts.owner.key();
-        shareholder.is_whitelisted = false;
-        shareholder.company = company;
-
+        shareholder.owner = shareholder_pk;
+        shareholder.voting_power = voting_power;
+        shareholder.delegated_to = shareholder_pk;
+        shareholder.is_whitelisted = true;
         let company = &mut ctx.accounts.company;
         company.shareholder_count += 1;
-
+        shareholder.company = company.key();
         msg!("Shareholder added successfully");
 
         Ok(())
     }
 
-    pub fn update_shareholder_voting_power(
-        ctx: Context<UpdateShareholder>,
-        new_voting_power: u128,
+    // pub fn add_shareholder_by_shareholder(
+    //     ctx: Context<AddShareholderByShareholder>,
+    //     voting_power: u128,
+    //     shareholder_pk: Pubkey,
+    // ) -> Result<()> {
+    //     let shareholder = &mut ctx.accounts.shareholder;
+    //     shareholder.owner = ctx.accounts.payer.key();
+    //     shareholder.voting_power = voting_power;
+    //     shareholder.delegated_to = shareholder_pk;
+    //     shareholder.is_whitelisted = true;
+
+    //     let company = &mut ctx.accounts.company;
+    //     company.shareholder_count += 1;
+    //     shareholder.company = company.key();
+
+    //     msg!("Shareholder added successfully");
+
+    //     Ok(())
+    // }
+
+    pub fn remove_shareholder(
+        //TODO: WHAT ABOUT HIS VOTING POWER? u should transfer the tokens back to company or the shareholder to be delegated!!!
+        ctx: Context<RemoveShareholder>,
     ) -> Result<()> {
         let shareholder = &mut ctx.accounts.shareholder;
-        shareholder.voting_power = new_voting_power;
+        shareholder.delegated_to = ctx.accounts.payer.key(); //company wallet
+        shareholder.is_whitelisted = false;
 
-        msg!("Shareholder voting power updated successfully");
+        let company = &mut ctx.accounts.company;
+        company.shareholder_count -= 1;
+
+        msg!("Shareholder removed successfully");
 
         Ok(())
     }
-}
-
-#[derive(Accounts)]
-#[instruction(token_name: String)]
-pub struct CreateToken<'info> {
-    #[account(mut)]
-    pub signer: Signer<'info>,
-    #[account(
-        init,
-        payer = signer,
-        mint::decimals = 6,
-        mint::authority = signer.key(),
-        seeds = [b"token-2022-token", signer.key().as_ref(), token_name.as_bytes()],
-        bump,
-    )]
-    pub mint: InterfaceAccount<'info, Mint>,
-    pub system_program: Program<'info, System>,
-    pub token_program: Interface<'info, TokenInterface>,
-}
-
-#[derive(Accounts)]
-pub struct CreateTokenAccount<'info> {
-    #[account(mut)]
-    pub signer: Signer<'info>,
-    pub mint: InterfaceAccount<'info, Mint>,
-    #[account(
-        init,
-        token::mint = mint,
-        token::authority = signer,
-        payer = signer,
-        seeds = [b"token-2022-token-account", signer.key().as_ref(), mint.key().as_ref()],
-        bump,
-    )]
-    pub token_account: InterfaceAccount<'info, TokenAccount>,
-    pub system_program: Program<'info, System>,
-    pub token_program: Interface<'info, TokenInterface>,
-}
-
-#[derive(Accounts)]
-pub struct CreateAssociatedTokenAccount<'info> {
-    #[account(mut)]
-    pub signer: Signer<'info>,
-    pub mint: InterfaceAccount<'info, Mint>,
-    #[account(
-        init,
-        associated_token::mint = mint,
-        payer = signer,
-        associated_token::authority = signer,
-    )]
-    pub token_account: InterfaceAccount<'info, TokenAccount>,
-    pub system_program: Program<'info, System>,
-    pub token_program: Interface<'info, TokenInterface>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-}
-
-#[derive(Accounts)]
-pub struct TransferToken<'info> {
-    #[account(mut)]
-    pub signer: Signer<'info>,
-    #[account(mut)]
-    pub from: InterfaceAccount<'info, TokenAccount>,
-    pub to: SystemAccount<'info>,
-    #[account(
-        init,
-        associated_token::mint = mint,
-        payer = signer,
-        associated_token::authority = to
-    )]
-    pub to_ata: InterfaceAccount<'info, TokenAccount>,
-    #[account(mut)]
-    pub mint: InterfaceAccount<'info, Mint>,
-    pub token_program: Interface<'info, TokenInterface>,
-    pub system_program: Program<'info, System>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-}
-
-#[derive(Accounts)]
-pub struct MintToken<'info> {
-    #[account(mut)]
-    pub signer: Signer<'info>,
-    #[account(mut)]
-    pub mint: InterfaceAccount<'info, Mint>,
-    #[account(mut)]
-    pub receiver: InterfaceAccount<'info, TokenAccount>,
-    pub token_program: Interface<'info, TokenInterface>,
+    
+    pub fn finish_poll(ctx: Context<FinishPoll>) -> Result<()> {
+        let poll = &mut ctx.accounts.poll;
+        require_eq!(poll.finished, false, StarSollError::PollAlreadyFinished);
+    
+        // The logic for finishing the poll, e.g. collecting final votes, etc.
+        poll.finished = true;
+    
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -482,8 +121,38 @@ pub struct InitializeCompany<'info> {
     pub token_program: Interface<'info, TokenInterface>,
 }
 
+// #[derive(Accounts)]
+// pub struct AddShareholderByShareholder<'info> {
+//     #[account(mut)]
+//     pub company: Account<'info, Company>,
+//     #[account(
+//         init,
+//         payer = payer,
+//         space = 8 + Shareholder::MAX_SIZE
+//     )]
+//     pub shareholder: Account<'info, Shareholder>,
+//     #[account(mut)]
+//     pub payer: Signer<'info>, //shareholder
+//     pub system_program: Program<'info, System>,
+// }
+
 #[derive(Accounts)]
-pub struct AddShareholder<'info> {
+pub struct AddShareholderByCompany<'info> {
+    #[account(mut )]
+    pub company: Account<'info, Company>,
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + Shareholder::MAX_SIZE
+    )]
+    pub shareholder: Account<'info, Shareholder>,
+    #[account(mut, signer)]
+    pub payer: Signer<'info>, //company
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct RemoveShareholder<'info> {
     #[account(mut)]
     pub company: Account<'info, Company>,
     #[account(
@@ -492,20 +161,9 @@ pub struct AddShareholder<'info> {
         space = 8 + Shareholder::MAX_SIZE
     )]
     pub shareholder: Account<'info, Shareholder>,
-    pub owner: Signer<'info>,
     #[account(mut)]
     pub payer: Signer<'info>, //company
     pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
-pub struct UpdateShareholder<'info> {
-    #[account(
-        mut,
-        has_one = owner
-    )]
-    pub shareholder: Account<'info, Shareholder>,
-    pub owner: Signer<'info>,
 }
 
 // Data Structures
@@ -534,5 +192,108 @@ pub struct Shareholder {
 }
 
 impl Shareholder {
-    pub const MAX_SIZE: usize = 32 + 16 + 32 + 1 + 32;
+    pub const MAX_SIZE: usize = 32 + 32 + 16 + 32 + 1 + 32;
+}
+
+// Vote
+
+impl Poll {
+    pub const MAXIMUM_SIZE: usize = 1904;
+
+    pub fn init(&mut self, options: Vec<String>) -> Result<()> {
+        require_eq!(self.finished, false, StarSollError::PollAlreadyFinished);
+        let mut c = 0;
+
+        self.options = options
+            .iter()
+            .map(|option| {
+                c += 1;
+
+                PollOption {
+                    label: option.clone(),
+                    id: c,
+                    votes: 0,
+                }
+            })
+            .collect();
+        self.finished = false;
+        Ok(())
+    }
+    pub fn vote(&mut self, vote_id: u8, voter_key: Pubkey, voting_power: u128) -> Result<()> {
+        // Check if the poll is still active
+        require_eq!(self.finished, false, StarSollError::PollAlreadyFinished);
+
+        // Validate if the vote ID corresponds to a valid option
+        require_eq!(
+            self.options.iter().any(|option| option.id == vote_id),
+            true,
+            StarSollError::PollOptionNotFound
+        );
+
+        // Ensure the voter has not voted already
+        require!(
+            !self.voters.iter().any(|voter| voter == &voter_key),
+            StarSollError::UserAlreadyVoted
+        );
+
+        // Add the voter to the list
+        self.voters.push(voter_key);
+
+        // Update the votes for the selected option, weighted by voting power
+        self.options.iter_mut().for_each(|option| {
+            if option.id == vote_id {
+                option.votes += voting_power as u64; // Assume `votes` uses `u64`
+            }
+        });
+
+        msg!("Vote successfully cast with weight: {}", voting_power);
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, AnchorSerialize, AnchorDeserialize)]
+pub struct PollOption {
+    pub label: String, // up to 50 char
+    pub id: u8,        // Option ID
+    pub votes: u64,    // Updated to u64 for larger voting counts
+}
+
+#[account]
+pub struct Poll {
+    // Size: 1 + 299 + 1604 = 1904
+    pub options: Vec<PollOption>, // 5 PollOption array = 4 + (59 * 5) = 299
+    pub voters: Vec<Pubkey>,      // 50 voters array = 4 + (32 * 50) = 1604
+    pub finished: bool,           // bool = 1
+}
+
+#[error_code]
+pub enum StarSollError {
+    PollAlreadyFinished,
+    PollOptionNotFound,
+    UserAlreadyVoted,
+}
+
+#[derive(Accounts)]
+pub struct InitializePoll<'info> {
+    #[account(init, payer = owner, space = 8 + Poll::MAXIMUM_SIZE)]
+    pub poll: Account<'info, Poll>,
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+#[derive(Accounts)]
+pub struct Vote<'info> {
+    #[account(mut)]
+    pub poll: Account<'info, Poll>,
+    #[account(mut, has_one = owner)] // Ensure the shareholder is valid
+    pub shareholder: Account<'info, Shareholder>,
+    pub owner: Signer<'info>, // The voter must sign the transaction
+}
+
+#[derive(Accounts)]
+pub struct FinishPoll<'info> {
+    #[account(mut)]
+    pub poll: Account<'info, Poll>,
+    // some signer or authority, etc.
 }

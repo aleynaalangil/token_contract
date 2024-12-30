@@ -30,83 +30,28 @@ describe('anchor', () => {
     [receiver.publicKey.toBytes(), TOKEN_2022_PROGRAM_ID.toBytes(), mint.toBytes()],
     ATA_PROGRAM_ID,
   );
-
-  it('Create Token-2022 Token', async () => {
-    // await connection.requestAirdrop(receiver.publicKey, 1000000000);
-    // await connection.requestAirdrop(wallet.publicKey, 1000000000);
+  
+  it('Add Shareholder by Company', async () => {
+    const newShareholder = anchor.web3.Keypair.generate();
+    const votingPower = new anchor.BN(1000); // Example voting power
+    const [companyAccount] = anchor.web3.PublicKey.findProgramAddressSync(
+      [Buffer.from('company'), wallet.publicKey.toBytes()],
+      program.programId
+    );
+  
     const tx = new anchor.web3.Transaction();
-
     const ix = await program.methods
-      .createToken(tokenName)
+      .addShareholderByCompany(newShareholder.publicKey, votingPower)
       .accounts({
-        signer: wallet.publicKey,
-        tokenProgram: TOKEN_2022_PROGRAM_ID,
+        company: companyAccount, // This needs to be defined or fetched
+        shareholder: newShareholder.publicKey,
+        payer: wallet.publicKey,
       })
+      .signers([newShareholder])
       .instruction();
-
+  
     tx.add(ix);
-
-    const sig = await sendAndConfirmTransaction(program.provider.connection, tx, [wallet.payer]);
-    console.log('Your transaction signature', sig);
-  });
-
-  it('Initialize payer ATA', async () => {
-    const tx = new anchor.web3.Transaction();
-
-    const ix = await program.methods
-      .createAssociatedTokenAccount()
-      .accounts({
-        tokenAccount: payerATA,
-        mint: mint,
-        signer: wallet.publicKey,
-        tokenProgram: TOKEN_2022_PROGRAM_ID,
-      })
-      .instruction();
-
-    tx.add(ix);
-
-    const sig = await sendAndConfirmTransaction(program.provider.connection, tx, [wallet.payer]);
-    console.log('Your transaction signature', sig);
-  });
-
-  it('Mint Token to payer', async () => {
-    const tx = new anchor.web3.Transaction();
-
-    const ix = await program.methods
-      .mintToken(new anchor.BN(200000000))
-      .accounts({
-        mint: mint,
-        signer: wallet.publicKey,
-        receiver: payerATA,
-        tokenProgram: TOKEN_2022_PROGRAM_ID,
-      })
-      .instruction();
-
-    tx.add(ix);
-
-    const sig = await sendAndConfirmTransaction(program.provider.connection, tx, [wallet.payer]);
-    console.log('Your transaction signature', sig);
-  });
-
-  // Using init in the transfer instruction, as init if needed is bot working with Token 2022 yet.
-  it('Transfer Token', async () => {
-    const tx = new anchor.web3.Transaction();
-
-    const ix = await program.methods
-      .transferToken(new anchor.BN(100))
-      .accounts({
-        mint: mint,
-        signer: wallet.publicKey,
-        from: payerATA,
-        to: receiver.publicKey,
-        tokenProgram: TOKEN_2022_PROGRAM_ID,
-        toAta: receiverATA,
-      })
-      .instruction();
-
-    tx.add(ix);
-
-    const sig = await sendAndConfirmTransaction(program.provider.connection, tx, [wallet.payer]);
-    console.log('Your transaction signature', sig);
+    const sig = await sendAndConfirmTransaction(program.provider.connection, tx, [wallet.payer, newShareholder]);
+    console.log('Transaction Signature:', sig);
   });
 });

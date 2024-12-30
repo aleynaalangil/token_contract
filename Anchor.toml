@@ -5,10 +5,10 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-token_contract = "2TE5kuPuKgoXoBEtDB6EhCvP5yVRJGiS2DnthZNw3oP4"
+token_contract = "HKj8pzMK6w6pSbdtzj1Q315xFrtpMWypnzzUK4JV6SSB"
 
 [programs.devnet]
-token_contract = "2TE5kuPuKgoXoBEtDB6EhCvP5yVRJGiS2DnthZNw3oP4"
+token_contract = "HKj8pzMK6w6pSbdtzj1Q315xFrtpMWypnzzUK4JV6SSB"
 
 [registry]
 url = "https://api.apr.dev"
