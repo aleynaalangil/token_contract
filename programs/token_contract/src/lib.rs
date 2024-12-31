@@ -17,6 +17,24 @@ pub mod token_contract {
         // Use the Poll's `vote` method
         poll.vote(vote_id, shareholder_owner, shareholder_voting_power)
     }
+    
+    pub fn tally_votes(ctx: Context<TallyVotes>) -> Result<()> {
+        let mut max_votes = 0;
+        let mut winner_label = String::new();
+        let poll_account = &ctx.accounts.poll;
+    
+        // Just print them to the program logs
+        for option in &poll_account.options {
+            msg!("Option {} has {} votes", option.id, option.votes);
+            if option.votes > max_votes {
+                max_votes = option.votes;
+                winner_label = option.label.clone();
+            }
+        }
+        msg!("The winner is option {}", winner_label);
+    
+        Ok(())
+    }
 
     pub fn initialize_company(
         ctx: Context<InitializeCompany>,
@@ -78,22 +96,23 @@ pub mod token_contract {
     //     Ok(())
     // }
 
-    pub fn remove_shareholder(
+    pub fn delegate_vote_rights(
         //TODO: WHAT ABOUT HIS VOTING POWER? u should transfer the tokens back to company or the shareholder to be delegated!!!
-        ctx: Context<RemoveShareholder>,
+        ctx: Context<DelegateVoteRights>,
+        new_delegated_to: Pubkey,
+        shareholder_voting_power: u128,
     ) -> Result<()> {
         let shareholder = &mut ctx.accounts.shareholder;
-        shareholder.delegated_to = ctx.accounts.payer.key(); //company wallet
-        shareholder.is_whitelisted = false;
+        shareholder.delegated_to = new_delegated_to; //company wallet
+        shareholder.is_whitelisted = true;
+        shareholder.voting_power = shareholder_voting_power;
+        shareholder.owner = new_delegated_to;
 
-        let company = &mut ctx.accounts.company;
-        company.shareholder_count -= 1;
-
-        msg!("Shareholder removed successfully");
+        msg!("Shareholder delegated successfully");
 
         Ok(())
     }
-    
+
     pub fn finish_poll(ctx: Context<FinishPoll>) -> Result<()> {
         let poll = &mut ctx.accounts.poll;
         require_eq!(poll.finished, false, StarSollError::PollAlreadyFinished);
@@ -152,7 +171,7 @@ pub struct AddShareholderByCompany<'info> {
 }
 
 #[derive(Accounts)]
-pub struct RemoveShareholder<'info> {
+pub struct DelegateVoteRights<'info> {
     #[account(mut)]
     pub company: Account<'info, Company>,
     #[account(
@@ -295,5 +314,10 @@ pub struct Vote<'info> {
 pub struct FinishPoll<'info> {
     #[account(mut)]
     pub poll: Account<'info, Poll>,
-    // some signer or authority, etc.
+}
+
+#[derive(Accounts)]
+pub struct TallyVotes<'info> {
+    #[account(mut)]
+    pub poll: Account<'info, Poll>,
 }
