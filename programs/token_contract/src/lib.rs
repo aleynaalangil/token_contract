@@ -2,7 +2,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::TokenInterface;
 
-declare_id!("Ajf6V1JscbNyFc5zyhm3DvDcZrNeqMvYsji2CrKvsum1");
+declare_id!("HYLDMLJVRik77Z3Lcyx4zTehwwJhhpogSVQvGDrhXUBN");
 
 #[program]
 pub mod token_contract {
