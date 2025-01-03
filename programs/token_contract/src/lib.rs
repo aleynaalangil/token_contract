@@ -2,7 +2,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::TokenInterface;
 
-declare_id!("HKj8pzMK6w6pSbdtzj1Q315xFrtpMWypnzzUK4JV6SSB");
+declare_id!("Ajf6V1JscbNyFc5zyhm3DvDcZrNeqMvYsji2CrKvsum1");
 
 #[program]
 pub mod token_contract {
@@ -66,8 +66,7 @@ pub mod token_contract {
         let shareholder = &mut ctx.accounts.shareholder;
         shareholder.owner = shareholder_pk;
         shareholder.voting_power = voting_power;
-        shareholder.delegated_to = shareholder_pk;
-        shareholder.is_whitelisted = true;
+        // shareholder.delegated_to = shareholder_pk; //change this to delegated_from and put the old shareholder_pk here
         let company = &mut ctx.accounts.company;
         company.shareholder_count += 1;
         shareholder.company = company.key();
@@ -76,46 +75,58 @@ pub mod token_contract {
         Ok(())
     }
 
-    // pub fn add_shareholder_by_shareholder(
-    //     ctx: Context<AddShareholderByShareholder>,
-    //     voting_power: u128,
-    //     shareholder_pk: Pubkey,
-    // ) -> Result<()> {
-    //     let shareholder = &mut ctx.accounts.shareholder;
-    //     shareholder.owner = ctx.accounts.payer.key();
-    //     shareholder.voting_power = voting_power;
-    //     shareholder.delegated_to = shareholder_pk;
-    //     shareholder.is_whitelisted = true;
-
-    //     let company = &mut ctx.accounts.company;
-    //     company.shareholder_count += 1;
-    //     shareholder.company = company.key();
-
-    //     msg!("Shareholder added successfully");
-
-    //     Ok(())
-    // }
+    pub fn remove_shareholder(ctx: Context<RemoveShareholder>) -> Result<()> {
+        let company = &mut ctx.accounts.company;
+        let shareholder = &mut ctx.accounts.shareholder;
+    
+        // Ensure the signer's key matches the company's `authority` field
+        require_keys_eq!(
+            company.authority,
+            ctx.accounts.authority.key(),
+            CustomError::Unauthorized
+        );
+    
+        // Decrement total count of shareholders
+        require!(company.shareholder_count > 0, CustomError::Underflow);
+        company.shareholder_count -= 1;
+        
+        // Optionally set the shareholder's voting_power to 0
+        shareholder.voting_power = 0;
+    
+        // Optionally set the owner + delegated_to to some inert address, e.g. the company or default
+        shareholder.owner = Pubkey::default();       // or Pubkey::default()
+        // shareholder.delegated_to = Pubkey::default(); // or Pubkey::default()
+    
+        msg!("Shareholder removed from company. Company share count is now: {}", company.shareholder_count);
+        Ok(())
+    }
 
     pub fn delegate_vote_rights(
-        //TODO: WHAT ABOUT HIS VOTING POWER? u should transfer the tokens back to company or the shareholder to be delegated!!!
         ctx: Context<DelegateVoteRights>,
         new_delegated_to: Pubkey,
         shareholder_voting_power: u128,
+        company: Pubkey,
     ) -> Result<()> {
         let shareholder = &mut ctx.accounts.shareholder;
-        shareholder.delegated_to = new_delegated_to; //company wallet
-        shareholder.is_whitelisted = true;
-        shareholder.voting_power = shareholder_voting_power;
+    
+        // The new delegated wallet is set both as `delegated_to` and also becomes `owner`.
+        // So instructions that do `#[account(mut, has_one = owner)]` will expect `new_delegated_to` to sign.
+        // shareholder.delegated_to = new_delegated_to;
         shareholder.owner = new_delegated_to;
 
+    
+        // Assign the given voting power
+        shareholder.voting_power = shareholder_voting_power;
+        shareholder.company = company;
+    
         msg!("Shareholder delegated successfully");
-
+    
         Ok(())
     }
 
     pub fn finish_poll(ctx: Context<FinishPoll>) -> Result<()> {
         let poll = &mut ctx.accounts.poll;
-        require_eq!(poll.finished, false, StarSollError::PollAlreadyFinished);
+        require_eq!(poll.finished, false,  PollError::PollAlreadyFinished);
     
         // The logic for finishing the poll, e.g. collecting final votes, etc.
         poll.finished = true;
@@ -140,20 +151,20 @@ pub struct InitializeCompany<'info> {
     pub token_program: Interface<'info, TokenInterface>,
 }
 
-// #[derive(Accounts)]
-// pub struct AddShareholderByShareholder<'info> {
-//     #[account(mut)]
-//     pub company: Account<'info, Company>,
-//     #[account(
-//         init,
-//         payer = payer,
-//         space = 8 + Shareholder::MAX_SIZE
-//     )]
-//     pub shareholder: Account<'info, Shareholder>,
-//     #[account(mut)]
-//     pub payer: Signer<'info>, //shareholder
-//     pub system_program: Program<'info, System>,
-// }
+#[derive(Accounts)]
+pub struct AddShareholderByShareholder<'info> {
+    #[account(mut)]
+    pub company: Account<'info, Company>,
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + Shareholder::MAX_SIZE
+    )]
+    pub shareholder: Account<'info, Shareholder>,
+    #[account(mut)]
+    pub payer: Signer<'info>, //shareholder
+    pub system_program: Program<'info, System>,
+}
 
 #[derive(Accounts)]
 pub struct AddShareholderByCompany<'info> {
@@ -171,17 +182,40 @@ pub struct AddShareholderByCompany<'info> {
 }
 
 #[derive(Accounts)]
+pub struct RemoveShareholder<'info> {
+    // The company from which we remove the shareholder
+    #[account(
+        mut,
+        has_one = authority,
+    )]
+    pub company: Account<'info, Company>,
+
+    // The specific Shareholder account to remove
+    // Make sure it also belongs to the same company.
+    #[account(
+        mut,
+        has_one = company  // ensures shareholder.company == company.key()
+    )]
+    pub shareholder: Account<'info, Shareholder>,
+
+    #[account(mut)]
+    pub authority: Signer<'info>, // The same wallet as company.authority
+}
+
+#[derive(Accounts)]
 pub struct DelegateVoteRights<'info> {
     #[account(mut)]
     pub company: Account<'info, Company>,
+
     #[account(
         init,
         payer = payer,
         space = 8 + Shareholder::MAX_SIZE
     )]
     pub shareholder: Account<'info, Shareholder>,
+
     #[account(mut)]
-    pub payer: Signer<'info>, //company
+    pub payer: Signer<'info>, // Must be the wallet paying for the new account creation
     pub system_program: Program<'info, System>,
 }
 
@@ -205,13 +239,20 @@ impl Company {
 pub struct Shareholder {
     pub owner: Pubkey, //shareholder
     pub voting_power: u128,
-    pub delegated_to: Pubkey, //self or another shareholder
-    pub is_whitelisted: bool,
+    // pub delegated_to: Pubkey, //self or another shareholder
     pub company: Pubkey,
 }
 
 impl Shareholder {
-    pub const MAX_SIZE: usize = 32 + 32 + 16 + 32 + 1 + 32;
+    pub const MAX_SIZE: usize = 32 + 32 + 16+ 32;
+}
+
+#[error_code]
+pub enum CustomError {
+    #[msg("You are not the company authority")]
+    Unauthorized,
+    #[msg("Shareholder count underflow")]
+    Underflow,
 }
 
 // Vote
@@ -220,7 +261,7 @@ impl Poll {
     pub const MAXIMUM_SIZE: usize = 1904;
 
     pub fn init(&mut self, options: Vec<String>) -> Result<()> {
-        require_eq!(self.finished, false, StarSollError::PollAlreadyFinished);
+        require_eq!(self.finished, false, PollError::PollAlreadyFinished);
         let mut c = 0;
 
         self.options = options
@@ -240,19 +281,19 @@ impl Poll {
     }
     pub fn vote(&mut self, vote_id: u8, voter_key: Pubkey, voting_power: u128) -> Result<()> {
         // Check if the poll is still active
-        require_eq!(self.finished, false, StarSollError::PollAlreadyFinished);
+        require_eq!(self.finished, false, PollError::PollAlreadyFinished);
 
         // Validate if the vote ID corresponds to a valid option
         require_eq!(
             self.options.iter().any(|option| option.id == vote_id),
             true,
-            StarSollError::PollOptionNotFound
+            PollError::PollOptionNotFound
         );
 
         // Ensure the voter has not voted already
         require!(
             !self.voters.iter().any(|voter| voter == &voter_key),
-            StarSollError::UserAlreadyVoted
+            PollError::UserAlreadyVoted
         );
 
         // Add the voter to the list
@@ -287,7 +328,7 @@ pub struct Poll {
 }
 
 #[error_code]
-pub enum StarSollError {
+pub enum PollError {
     PollAlreadyFinished,
     PollOptionNotFound,
     UserAlreadyVoted,
