@@ -2,40 +2,19 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::TokenInterface;
 
-declare_id!("HYLDMLJVRik77Z3Lcyx4zTehwwJhhpogSVQvGDrhXUBN");
+declare_id!("2dae2BYY9kVVDfW4bjprmmrZv6b4PJvudeh4hSJATtS4");
+
+#[error_code]
+pub enum CustomError {
+    #[msg("You are not the company authority")]
+    Unauthorized,
+}
 
 #[program]
 pub mod token_contract {
     use super::*;
 
-    pub fn initialize_poll(ctx: Context<InitializePoll>, options: Vec<String>) -> Result<()> {
-        ctx.accounts.poll.init(options)
-    }
-
-    pub fn vote(ctx: Context<Vote>, vote_id: u8, shareholder_owner: Pubkey, shareholder_voting_power: u128) -> Result<()> {
-        let poll = &mut ctx.accounts.poll;
-        // Use the Poll's `vote` method
-        poll.vote(vote_id, shareholder_owner, shareholder_voting_power)
-    }
-    
-    pub fn tally_votes(ctx: Context<TallyVotes>) -> Result<()> {
-        let mut max_votes = 0;
-        let mut winner_label = String::new();
-        let poll_account = &ctx.accounts.poll;
-    
-        // Just print them to the program logs
-        for option in &poll_account.options {
-            msg!("Option {} has {} votes", option.id, option.votes);
-            if option.votes > max_votes {
-                max_votes = option.votes;
-                winner_label = option.label.clone();
-            }
-        }
-        msg!("The winner is option {}", winner_label);
-    
-        Ok(())
-    }
-
+    /// Initialize the Company with name, symbol, total supply, etc.
     pub fn initialize_company(
         ctx: Context<InitializeCompany>,
         name: String,
@@ -50,57 +29,55 @@ pub mod token_contract {
         company.symbol = symbol;
         company.total_supply = total_supply;
         company.token_mint = token_mint;
-        company.shareholder_count = 0;
         company.treasury = treasury;
 
-        msg!("Company initialized successfully with token mint via token_contract");
-
+        msg!("Company initialized successfully");
         Ok(())
     }
 
+    /// Add a new Shareholder by creating a "Shareholder" account (one-PDA-per-shareholder).
     pub fn add_shareholder_by_company(
-        ctx: Context<AddShareholderByCompany>, // company: Pubkey,
+        ctx: Context<AddShareholderByCompany>,
         shareholder_pk: Pubkey,
         voting_power: u128,
     ) -> Result<()> {
         let shareholder = &mut ctx.accounts.shareholder;
+        let company = &mut ctx.accounts.company;
+
         shareholder.owner = shareholder_pk;
         shareholder.voting_power = voting_power;
-        // shareholder.delegated_to = shareholder_pk; //change this to delegated_from and put the old shareholder_pk here
-        let company = &mut ctx.accounts.company;
-        company.shareholder_count += 1;
         shareholder.company = company.key();
-        msg!("Shareholder added successfully");
 
+        msg!("Shareholder PDA created for pubkey={}", shareholder_pk);
         Ok(())
     }
 
-    pub fn remove_shareholder(ctx: Context<RemoveShareholder>) -> Result<()> {
-        let company = &mut ctx.accounts.company;
-        let shareholder = &mut ctx.accounts.shareholder;
-    
-        // Ensure the signer's key matches the company's `authority` field
-        require_keys_eq!(
-            company.authority,
-            ctx.accounts.authority.key(),
-            CustomError::Unauthorized
+    /// Remove a Shareholder by closing the Shareholder account.
+    pub fn remove_shareholder_by_company(ctx: Context<RemoveShareholder>) -> Result<()> {
+        let company = &ctx.accounts.company;
+        require_keys_eq!(company.authority, ctx.accounts.authority.key(), CustomError::Unauthorized);
+
+        msg!("Shareholder {} removed from company {}.",
+            ctx.accounts.shareholder.key(), 
+            company.key()
         );
-    
-        // Decrement total count of shareholders
-        require!(company.shareholder_count > 0, CustomError::Underflow);
-        company.shareholder_count -= 1;
-        
-        // Optionally set the shareholder's voting_power to 0
-        shareholder.voting_power = 0;
-    
-        // Optionally set the owner + delegated_to to some inert address, e.g. the company or default
-        shareholder.owner = Pubkey::default();       // or Pubkey::default()
-        // shareholder.delegated_to = Pubkey::default(); // or Pubkey::default()
-    
-        msg!("Shareholder removed from company. Company share count is now: {}", company.shareholder_count);
         Ok(())
     }
 
+    /// Delegate vote rights by changing the `owner` on the Shareholder account
+    /// (and maybe adjusting voting_power).
+    // pub fn delegate_vote_rights(
+    //     ctx: Context<DelegateVoteRights>,
+    //     new_delegated_to: Pubkey,
+    //     new_voting_power: u128,
+    // ) -> Result<()> {
+    //     let shareholder = &mut ctx.accounts.shareholder;
+    //     shareholder.owner = new_delegated_to;
+    //     shareholder.voting_power = new_voting_power;
+
+    //     msg!("Delegation complete; new owner = {}", new_delegated_to);
+    //     Ok(())
+    // }
     pub fn delegate_vote_rights(
         ctx: Context<DelegateVoteRights>,
         new_delegated_to: Pubkey,
@@ -124,102 +101,64 @@ pub mod token_contract {
         Ok(())
     }
 
-    pub fn finish_poll(ctx: Context<FinishPoll>) -> Result<()> {
+     /// Create a poll with a list of `options`.
+     pub fn initialize_poll(ctx: Context<InitializePoll>, options: Vec<String>) -> Result<()> {
+        ctx.accounts.poll.init(options)?;
+        Ok(())
+    }
+
+    /// Cast a vote. 
+    /// - Each user that votes must create a unique `VoteRecord` to prove they haven't voted yet.
+    pub fn vote(ctx: Context<Vote>, vote_id: u8, voting_power: u64) -> Result<()> {
         let poll = &mut ctx.accounts.poll;
-        require_eq!(poll.finished, false,  PollError::PollAlreadyFinished);
-    
-        // The logic for finishing the poll, e.g. collecting final votes, etc.
-        poll.finished = true;
-    
+        poll.vote(vote_id, voting_power)?;
+
+        let record = &mut ctx.accounts.vote_record;
+        record.poll = poll.key();
+        record.voter = ctx.accounts.voter.key();
+        record.voted_option = vote_id;
+
+        Ok(())
+    }
+
+    /// Finish the poll. If there's a tie among multiple top options, create a new poll 
+    /// containing only those tied options.
+    pub fn finish_poll(ctx: Context<FinishPoll>) -> Result<()> {
+        let old_poll = &mut ctx.accounts.old_poll;
+        require!(!old_poll.finished, PollError::PollAlreadyFinished);
+
+        let (winners, max_votes) = old_poll.calculate_winners();
+        msg!(
+            "Finishing poll {}, max_votes={}",
+            old_poll.key(),
+            max_votes
+        );
+        if winners.len() > 1 {
+            // We have a tie => create a new poll
+            let tie_poll = &mut ctx.accounts.tie_break_poll;
+            tie_poll.init_from_previous(&winners)?;
+            msg!(
+                "Tie among {} options => new tie-break poll created: {}",
+                winners.len(),
+                tie_poll.key()
+            );
+        } else {
+            msg!(
+                "Single winner: option '{}' with {} votes",
+                winners[0].label,
+                winners[0].votes
+            );
+        }
+
+        old_poll.finished = true;
         Ok(())
     }
 }
 
-#[derive(Accounts)]
-pub struct InitializeCompany<'info> {
-    #[account(
-        init,
-        payer = payer,
-        space = 8 + Company::MAX_SIZE,
-        seeds = [b"company", payer.key().as_ref()],
-        bump,
-    )]
-    pub company: Account<'info, Company>,
-    #[account(mut)]
-    pub payer: Signer<'info>,
-    pub system_program: Program<'info, System>,
-    pub token_program: Interface<'info, TokenInterface>,
-}
+// ---------------------------------------
+//        ACCOUNTS & DATA STRUCTS
+// ---------------------------------------
 
-#[derive(Accounts)]
-pub struct AddShareholderByShareholder<'info> {
-    #[account(mut)]
-    pub company: Account<'info, Company>,
-    #[account(
-        init,
-        payer = payer,
-        space = 8 + Shareholder::MAX_SIZE
-    )]
-    pub shareholder: Account<'info, Shareholder>,
-    #[account(mut)]
-    pub payer: Signer<'info>, //shareholder
-    pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
-pub struct AddShareholderByCompany<'info> {
-    #[account(mut )]
-    pub company: Account<'info, Company>,
-    #[account(
-        init,
-        payer = payer,
-        space = 8 + Shareholder::MAX_SIZE
-    )]
-    pub shareholder: Account<'info, Shareholder>,
-    #[account(mut, signer)]
-    pub payer: Signer<'info>, //company
-    pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
-pub struct RemoveShareholder<'info> {
-    // The company from which we remove the shareholder
-    #[account(
-        mut,
-        has_one = authority,
-    )]
-    pub company: Account<'info, Company>,
-
-    // The specific Shareholder account to remove
-    // Make sure it also belongs to the same company.
-    #[account(
-        mut,
-        has_one = company  // ensures shareholder.company == company.key()
-    )]
-    pub shareholder: Account<'info, Shareholder>,
-
-    #[account(mut)]
-    pub authority: Signer<'info>, // The same wallet as company.authority
-}
-
-#[derive(Accounts)]
-pub struct DelegateVoteRights<'info> {
-    #[account(mut)]
-    pub company: Account<'info, Company>,
-
-    #[account(
-        init,
-        payer = payer,
-        space = 8 + Shareholder::MAX_SIZE
-    )]
-    pub shareholder: Account<'info, Shareholder>,
-
-    #[account(mut)]
-    pub payer: Signer<'info>, // Must be the wallet paying for the new account creation
-    pub system_program: Program<'info, System>,
-}
-
-// Data Structures
 #[account]
 pub struct Company {
     pub authority: Pubkey,
@@ -227,51 +166,121 @@ pub struct Company {
     pub symbol: String,
     pub total_supply: u128,
     pub token_mint: Pubkey,
-    pub shareholder_count: u32,
     pub treasury: Pubkey,
 }
-
 impl Company {
-    pub const MAX_SIZE: usize = 32 + 4 + 32 + 16 + 32 + 4 + 32;
+    pub const MAX_SIZE: usize = 
+        32 +           // authority
+        (4 + 50) +     // name (up to 50 chars)
+        (4 + 10) +     // symbol (up to 10 chars)
+        16 +           // total_supply (u128)
+        32 +           // token_mint
+        32;            // treasury
 }
 
 #[account]
 pub struct Shareholder {
-    pub owner: Pubkey, //shareholder
+    pub owner: Pubkey,
     pub voting_power: u128,
-    // pub delegated_to: Pubkey, //self or another shareholder
-    pub company: Pubkey,
+    pub company: Pubkey, // points back to the Company
 }
-
 impl Shareholder {
-    pub const MAX_SIZE: usize = 32 + 32 + 16+ 32;
+    pub const MAX_SIZE: usize = 32 + 16 + 32;
 }
 
-#[error_code]
-pub enum CustomError {
-    #[msg("You are not the company authority")]
-    Unauthorized,
-    #[msg("Shareholder count underflow")]
-    Underflow,
+// 1) InitializeCompany
+#[derive(Accounts)]
+pub struct InitializeCompany<'info> {
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + Company::MAX_SIZE,
+        seeds = [b"company", payer.key().as_ref()],
+        bump
+    )]
+    pub company: Account<'info, Company>,
+
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+    pub token_program: Interface<'info, TokenInterface>,
 }
 
-// Vote
+// 2) AddShareholderByCompany
+#[derive(Accounts)]
+#[instruction(shareholder_pk: Pubkey, voting_power: u128)]
+pub struct AddShareholderByCompany<'info> {
+    #[account(mut)]
+    pub company: Account<'info, Company>,
+
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + Shareholder::MAX_SIZE,
+        seeds = [b"shareholder", shareholder_pk.as_ref()],
+        bump
+    )]
+    pub shareholder: Account<'info, Shareholder>,
+
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+// 3) RemoveShareholder
+#[derive(Accounts)]
+pub struct RemoveShareholder<'info> {
+    #[account(mut, has_one = authority)]
+    pub company: Account<'info, Company>,
+
+    #[account(
+        mut,
+        has_one = company,
+        close = authority
+    )]
+    pub shareholder: Account<'info, Shareholder>,
+
+    #[account(mut)]
+    pub authority: Signer<'info>,
+}
+
+// 4) DelegateVoteRights
+#[derive(Accounts)]
+pub struct DelegateVoteRights<'info> {
+    #[account(mut)]
+    pub company: Account<'info, Company>,  // optional check
+
+    #[account(mut, has_one = company)]
+    pub shareholder: Account<'info, Shareholder>,
+
+    #[account(mut)]
+    pub payer: Signer<'info>, // if you need to pay for reallocation, etc.
+    pub system_program: Program<'info, System>,
+}
+
+// ----------------------------------
+//   Poll, Options, and VoteRecord
+// ----------------------------------
+#[account]
+pub struct Poll {
+    pub options: Vec<PollOption>,
+    pub finished: bool,
+}
 
 impl Poll {
-    pub const MAXIMUM_SIZE: usize = 1904;
+    pub const MAX_SIZE: usize = 2048; // adjust as needed
 
     pub fn init(&mut self, options: Vec<String>) -> Result<()> {
-        require_eq!(self.finished, false, PollError::PollAlreadyFinished);
-        let mut c = 0;
-
+        require!(!self.finished, PollError::PollAlreadyFinished);
+        let mut idx = 0u8;
         self.options = options
-            .iter()
-            .map(|option| {
-                c += 1;
-
+            .into_iter()
+            .map(|label| {
+                idx += 1;
                 PollOption {
-                    label: option.clone(),
-                    id: c,
+                    id: idx,
+                    label,
                     votes: 0,
                 }
             })
@@ -279,86 +288,130 @@ impl Poll {
         self.finished = false;
         Ok(())
     }
-    pub fn vote(&mut self, vote_id: u8, voter_key: Pubkey, voting_power: u128) -> Result<()> {
-        // Check if the poll is still active
-        require_eq!(self.finished, false, PollError::PollAlreadyFinished);
 
-        // Validate if the vote ID corresponds to a valid option
-        require_eq!(
-            self.options.iter().any(|option| option.id == vote_id),
-            true,
-            PollError::PollOptionNotFound
-        );
+    pub fn vote(&mut self, vote_id: u8, voting_power: u64) -> Result<()> {
+        require!(!self.finished, PollError::PollAlreadyFinished);
 
-        // Ensure the voter has not voted already
-        require!(
-            !self.voters.iter().any(|voter| voter == &voter_key),
-            PollError::UserAlreadyVoted
-        );
+        let Some(opt) = self.options.iter_mut().find(|o| o.id == vote_id) 
+            else { return Err(PollError::PollOptionNotFound.into()); };
 
-        // Add the voter to the list
-        self.voters.push(voter_key);
+        opt.votes = opt.votes.checked_add(voting_power).ok_or(PollError::Overflow)?;
+        Ok(())
+    }
 
-        // Update the votes for the selected option, weighted by voting power
-        self.options.iter_mut().for_each(|option| {
-            if option.id == vote_id {
-                option.votes += voting_power as u64; // Assume `votes` uses `u64`
+    pub fn calculate_winners(&self) -> (Vec<PollOption>, u64) {
+        let mut max_votes = 0u64;
+        for o in &self.options {
+            if o.votes > max_votes {
+                max_votes = o.votes;
             }
-        });
+        }
+        let winners = self.options
+            .iter()
+            .filter(|o| o.votes == max_votes)
+            .cloned()
+            .collect();
+        (winners, max_votes)
+    }
 
-        msg!("Vote successfully cast with weight: {}", voting_power);
-
+    // For tie-break: create a new poll with only the winning (tied) options
+    pub fn init_from_previous(&mut self, winners: &Vec<PollOption>) -> Result<()> {
+        self.finished = false;
+        self.options = winners.iter().map(|o| PollOption {
+            id: o.id,
+            label: o.label.clone(),
+            votes: 0,
+        }).collect();
         Ok(())
     }
 }
 
-#[derive(Clone, AnchorSerialize, AnchorDeserialize)]
+#[derive(Clone, AnchorDeserialize, AnchorSerialize)]
 pub struct PollOption {
-    pub label: String, // up to 50 char
-    pub id: u8,        // Option ID
-    pub votes: u64,    // Updated to u64 for larger voting counts
+    pub id: u8,
+    pub label: String,
+    pub votes: u64,
 }
 
+/// Each user must create a VoteRecord with seeds = [b"vote-record", pollPubkey, userPubkey]
+/// to ensure they do not vote twice.
 #[account]
-pub struct Poll {
-    // Size: 1 + 299 + 1604 = 1904
-    pub options: Vec<PollOption>, // 5 PollOption array = 4 + (59 * 5) = 299
-    pub voters: Vec<Pubkey>,      // 50 voters array = 4 + (32 * 50) = 1604
-    pub finished: bool,           // bool = 1
+pub struct VoteRecord {
+    pub poll: Pubkey,
+    pub voter: Pubkey,
+    pub voted_option: u8,
+}
+impl VoteRecord {
+    pub const MAX_SIZE: usize = 32 + 32 + 1;
 }
 
+// ---------------------------
+//      ERROR CODES
+// ---------------------------
 #[error_code]
 pub enum PollError {
+    #[msg("Poll is already finished")]
     PollAlreadyFinished,
+    #[msg("Poll option not found")]
     PollOptionNotFound,
-    UserAlreadyVoted,
+    #[msg("Arithmetic overflow")]
+    Overflow,
 }
 
+// ---------------------------
+//    ACCOUNTS STRUCTS
+// ---------------------------
 #[derive(Accounts)]
 pub struct InitializePoll<'info> {
-    #[account(init, payer = owner, space = 8 + Poll::MAXIMUM_SIZE)]
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + Poll::MAX_SIZE
+    )]
     pub poll: Account<'info, Poll>,
+
     #[account(mut)]
-    pub owner: Signer<'info>,
+    pub payer: Signer<'info>,
     pub system_program: Program<'info, System>,
 }
+
 #[derive(Accounts)]
 pub struct Vote<'info> {
     #[account(mut)]
     pub poll: Account<'info, Poll>,
-    #[account(mut, has_one = owner)] // Ensure the shareholder is valid
-    pub shareholder: Account<'info, Shareholder>,
-    pub owner: Signer<'info>, // The voter must sign the transaction
+
+    #[account(mut)]
+    pub voter: Signer<'info>,
+
+    // We ensure the user hasn't voted by creating a new VoteRecord.
+    // If it already exists, "init" will fail.
+    #[account(
+        init,
+        payer = voter,
+        space = 8 + VoteRecord::MAX_SIZE,
+        seeds = [b"vote-record", poll.key().as_ref(), voter.key().as_ref()],
+        bump
+    )]
+    pub vote_record: Account<'info, VoteRecord>,
+
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
 pub struct FinishPoll<'info> {
+    // The old poll
     #[account(mut)]
-    pub poll: Account<'info, Poll>,
-}
+    pub old_poll: Account<'info, Poll>,
 
-#[derive(Accounts)]
-pub struct TallyVotes<'info> {
+    // The brand-new poll in case we need a tie-break
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + Poll::MAX_SIZE
+    )]
+    pub tie_break_poll: Account<'info, Poll>,
+
     #[account(mut)]
-    pub poll: Account<'info, Poll>,
+    pub payer: Signer<'info>,
+    pub system_program: Program<'info, System>,
 }
